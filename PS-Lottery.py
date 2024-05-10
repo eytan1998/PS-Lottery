@@ -136,4 +136,5 @@ def PS_Lottery(agents, objects, preferences):
     return result
 
 if __name__ == '__main__':
+
     print(PS_Lottery(list(range(2)), list(range(4)), [[0, 1, 2, 3],[0, 2, 1, 3]]))
