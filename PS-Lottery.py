@@ -1,5 +1,7 @@
 import copy
 import math
+import random
+from time import perf_counter
 
 import networkx as nx
 import numpy
@@ -24,6 +26,7 @@ def bikroft(matrix: numpy.array) -> list:
     row_sums = np.sum(matrix, axis=1)
     col_sums = np.sum(matrix, axis=0)
     if not np.allclose(row_sums, 1) or not np.allclose(col_sums, 1) or not np.all(matrix >= 0):
+        print(matrix)
         raise ValueError("must be a bistochastic matrix")
 
     P = []
@@ -74,7 +77,7 @@ def PS(agents, objects, preferences):
     preferences_tmp = copy.deepcopy(preferences)
 
     # run until no objects remain
-    while O[stage]:
+    while any(O[stage]):
         # read to be eaten object
         MaxN = set()
         for agent_pref in preferences_tmp:
@@ -89,7 +92,7 @@ def PS(agents, objects, preferences):
         for o in MaxN:
             T[stage + 1][o] = ((1 - np.sum(P[:, o])) /
                                sum([1 for pref in preferences_tmp if len(pref) > 0 and pref[0] == o]))
-        Tmin.append(min([value for value in T[stage + 1] if value > 0]))
+        Tmin.append(min([o for i, o in enumerate(T[stage + 1]) if i in MaxN]))
 
         # Update P of the objects been eaten
         for a in agents:
@@ -109,29 +112,8 @@ def cut_capacity(G, S):
             capacity += G[u][v]['capacity']
     return capacity
 
-def BIN(G,low,high):
-    while low <= high:
-        mid = (low + high) / 2
-        GTMP = G
-        for u in GTMP.successors(0):
-            GTMP[0][u]['capacity'] = mid
-        value, cut = nx.minimum_cut(GTMP, 0, 11)
-        if cut[0] == {0}:
-            low = mid
-        else:
-            high = mid
-
 
 def EPS(agents, objects, preferences):
-    draw_options = {
-        "font_size": 20,
-        "node_size": 700,
-        "node_color": "green",
-        "edgecolors": "black",
-        "linewidths": 1,
-        "width": 2,
-        "with_labels": True
-    }
     n = len(agents)
     k = 0
     m = len(objects)
@@ -157,7 +139,7 @@ def EPS(agents, objects, preferences):
     G.add_edges_from([(u, T, {'capacity': 1}) for u in A])
     G.add_edges_from([(u, v, {'capacity': np.Infinity}) for u in agents for v in A if (v - n - 1) in H[u - 1]])
 
-    L_original = (cut_capacity(G, range(0, 10))) / len(agents) - 0.1
+    L_original = 1e-10
     G.add_edges_from([(S, u, {'capacity': C[k][u - 1] + L_original}) for u in agents])
 
     while A:
@@ -166,16 +148,35 @@ def EPS(agents, objects, preferences):
         for u in G.successors(S):
             G[S][u]['capacity'] = C[k][u - 1] + L
         value, cut = nx.minimum_cut(G, S, T)
-        while cut[0] == {0}:
-            L += 0.00001
-            for u in G.successors(S):
-                G[S][u]['capacity'] = C[k][u - 1] + L
-            value, cut = nx.minimum_cut(G, S, T)
+        low = L
+        high = 1 - 1e-10
+        while low <= high - 1e-10:
+            mid = (low + high) / 2
+            G_TMP = G
+            for u in G_TMP.successors(S):
+                G_TMP[S][u]['capacity'] = C[k][u - 1] + mid
+            value, cut = nx.minimum_cut(G_TMP, S, T)
+            if cut[0] == {0}:
+                low = mid
+                if low <= high - 1e-10:
+                    low = high
+                    break
+            else:
+                high = mid
+                if low <= high - 1e-10:
+                    low = mid
+                    break
+
+        L = low
+        for u in G.successors(0):
+            G[0][u]['capacity'] = C[k][u - 1] + L
         flow, flow_dict = nx.maximum_flow(G, S, T)
         for x in agents:
-            if x not in cut[0]: continue
+            if x not in cut[0]:
+                continue
             for u in flow_dict[x]:
-                if u not in cut[0]: continue
+                if u not in cut[0]:
+                    continue
                 P[x - 1][u - n - 1] = flow_dict[x][u]
 
         # Remove all edges that start with nodes in agents
@@ -184,17 +185,14 @@ def EPS(agents, objects, preferences):
             G.remove_edges_from(edges_to_remove)
 
         in_cut = [x for x in agents + A if x in cut[0]]
-        # remove eaten object
 
+        # remove eaten object
+        objects_to_remove = {x - n - 1 for x in cut[0]}
         for agent_pref in preferences_tmp:
             for pref in agent_pref:
-                if isinstance(pref, set):
-                    pref -= {x for x in pref if x + n + 1 in cut[0]}
-                    if len(pref) == 0:
-                        agent_pref.remove(pref)
-                # elif isinstance(agent_pref[0], int):
-                #     if pref + n + 1 in cut[0]:
-                #         agent_pref.remove(pref)
+                # if isinstance(pref, set):
+                pref -= objects_to_remove
+        preferences_tmp = [[pref for pref in agent_pref if pref] for agent_pref in preferences_tmp]
 
         H = [preferences_tmp[x - 1][0] if len(preferences_tmp[x - 1]) > 0 else [] for x in agents]
         G.add_edges_from(
@@ -207,8 +205,6 @@ def EPS(agents, objects, preferences):
         A = [x for x in A if x not in in_cut]
 
         k += 1
-
-    # print(L)
 
     # pos = nx.circular_layout(G)
     # nx.draw_networkx_edge_labels(G, pos, edge_labels=nx.get_edge_attributes(G, 'capacity'))
@@ -252,7 +248,6 @@ def PS_Lottery(agents, objects, preferences, use_EPS=False):
     # 5 run (E)PS then split to presenters
     if use_EPS:
         P = EPS(agents, objects_dummy, preferences_dummy)
-        P = np.around(P, decimals=1)
     else:
         preferences_dummy = [break_lexicographically(pref) for pref in preferences_dummy]
         P = PS(agents, objects_dummy, preferences_dummy)
@@ -281,12 +276,75 @@ def PS_Lottery(agents, objects, preferences, use_EPS=False):
     return result
 
 
+def print_array(array):
+    for row in array:
+        print("    " + " ".join(str(int(cell)) for cell in row))
+
+
+def print_PS_Lottery(result):
+    print("=" * 40)
+    for item in result:
+        print(f"Probability: {item[0]}")
+        print("Matrix:")
+        print_array(item[1])
+        print()
+
+
+def measure_time(func, *args, **kwargs):
+    """
+    Measure the time taken to run function.
+    Taken from the lecture
+    :param func: the function to run
+    :param args: the arguments to pass to the function
+    :param kwargs: the keyword arguments to pass to the function
+    :return: the time taken to run the function
+    """
+    start = perf_counter()
+    func(*args, **kwargs)
+    end = perf_counter()
+    return end - start
+
+
+def rnd_pref(agents, objects):
+    objects = list(range(objects))
+    prefrence = []
+    for _ in range(agents):
+        np.random.shuffle(objects)
+        prefrence.append(objects.copy())
+    return prefrence
+
+
+def compare_solution_methods():
+    """
+    Compare the time taken to solve linear equations with the root function and with np.linalg.solve.
+    we take samples is from 1 to 1000 with jumps of 10, each run 10 time and compute the average.
+    after getting the times plot them together in one graph.
+
+    """
+    sizes = range(7, 15, 1)
+    iteration = 1
+    PS_times = []
+    EPS_times = []
+    for i, size in enumerate(sizes):
+        print("*" * 20 + str(i) + "*" * 20)
+        PS_times_for_average = []
+        EPS_times_for_average = []
+        for _ in range(iteration):
+            objects = np.random.randint(size - 5, size + 5)
+            prefrence = rnd_pref(size, objects)
+            PS_times_for_average.append(measure_time(PS_Lottery, list(range(size)), list(range(objects)), prefrence,use_EPS=False))
+            EPS_times_for_average.append(measure_time(PS_Lottery, list(range(size)), list(range(objects)), prefrence,use_EPS=True))
+
+        PS_times.append(np.average(PS_times_for_average))
+        EPS_times.append(np.average(EPS_times_for_average))
+    plt.plot(sizes, PS_times, 'g-', label='PS')
+    plt.plot(sizes, EPS_times, 'b-', label='EPS')
+    plt.xlabel('Size')
+    plt.ylabel('time in sec')
+    plt.legend()
+    plt.savefig("compere.png")  # after you plot the graphs, save them to a file and upload it separately.
+    plt.show()  # this should show the plot on your screen
+
+
 if __name__ == '__main__':
-    # print(PS_Lottery(list(range(2)), list(range(4)), [[0, 1, 2, 3], [0, 2, 1, 3]], use_EPS=True))
-    # print(PS_Lottery(list(range(3)), list(range(4)), [[0, 1, 2, 3], [1, 0, 2, 3], [0, 3, 1, 2]], use_EPS=False))
-    # print(PS_Lottery(list(range(3)), list(range(4)), [[0, 1, 2, 3], [1, 0, 2, 3], [0, 3, 1, 2]], use_EPS=True))
-    # print(PS(list(range(2)), list(range(4)), [[0, 1, 2, 3], [0, 2, 1, 3]]))
-    # print(EPS(list(range(2)), list(range(4)), [[0, 1, 2, 3], [0, 2, 1, 3]]))
-    print(PS_Lottery([0, 1, 2], [0, 1, 2, 3], [[0, 1, 2, 3], [1, 0, 2, 3], [0, 3, 1, 2]]))
-    print(PS([0, 1, 2], [0, 1, 2, 3], [[0, 1, 2, 3], [1, 0, 2, 3], [0, 3, 1, 2]]))
-    print(EPS([0, 1, 2], [0, 1, 2, 3], [[0, 1, 2, 3], [1, 0, 2, 3], [0, 3, 1, 2]]))
+    compare_solution_methods()
