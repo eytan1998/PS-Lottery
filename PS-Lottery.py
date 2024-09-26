@@ -473,7 +473,7 @@ def isEF(mat, pref) -> bool:
     return True
 
 
-def isEF1(mat, pref) -> bool:
+def isEF1(mat, pref):
     for me in range(len(mat)):
         for other in range(len(mat)):
             if me == other:
@@ -494,10 +494,33 @@ def isEF1(mat, pref) -> bool:
                     ]
                 )
                 if is_sum - 0.00000000001 > my_sum:
-                    raise ValueError("The denominator cannot be zero.")
                     return (is_sum,my_sum)
     return True
 
+def isEF2(mat, pref) -> bool:
+    for me in range(len(mat)):
+        for other in range(len(mat)):
+            if me == other:
+                continue
+            my_sum = 0
+            is_sum = -2
+            for item in pref[me]:
+                my_sum += sum(
+                    [
+                        mat[me][theItem]
+                        for theItem in range(item, len(mat[0]), len(pref) + 1)
+                    ]
+                )
+                is_sum += sum(
+                    [
+                        mat[other][theItem]
+                        for theItem in range(item, len(mat[0]), len(pref) + 1)
+                    ]
+                )
+                if is_sum - 0.00000000001 > my_sum:
+                    return (is_sum,my_sum)
+                    raise ValueError("ex-post ef2")
+    return True
 
 def print_PS_Lottery(result, r, c, prefe):
     print("=" * 40)
@@ -507,9 +530,9 @@ def print_PS_Lottery(result, r, c, prefe):
         print(f"Matrix No {index}:")
         print_mat(item[1], r, c)
         print(f"Is ex-post EF? {isEF(item[1],prefe)}")
-        print(
-            f'Is ex-post EF-1? {True if isEF1(item[1],prefe) else "=========================================="}'
-        )
+        print(f'Is ex-post EF-1? {isEF1(item[1],prefe)}')
+        print(f'Is ex-post EF-2? {isEF2(item[1],prefe)}')
+       
         print()
         index+=1
 
