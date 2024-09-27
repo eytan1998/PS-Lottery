@@ -1,5 +1,6 @@
 import copy
 import math
+import random
 import sys
 import numpy as np
 
@@ -93,7 +94,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
     ]
     # 3) alloction
     alloc_tmp = copy.deepcopy(alloc)
-    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n,len(dummy)))))
+    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n,n*c-m))))
     # 4) prefrence
     preferences_tmp = copy.deepcopy(preferences_dummy)
     # 5)freshhold
@@ -129,7 +130,8 @@ def MPS_Lottery(agents, objects, preferences, alloc):
                 for o in objects_dummy if left_to_eat[o] > 0]+[np.inf]
         how_much_to_eat = min(
             min(threshhold - ate[a] for a in who_will_eat),
-            the_next_in_line / len(who_will_eat),
+            # the_next_in_line / len(who_will_eat),
+            the_next_in_line,
             min(until_end_of_item)
         )
         # update P
@@ -179,7 +181,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
                 for o in objects_dummy if left_to_eat[o] > 0]+[np.inf]
         how_much_to_eat = min(
             min(threshhold_absolute - ate[a] for a in who_will_eat),
-            the_next_in_line / len(who_will_eat),
+            the_next_in_line,
             min(until_end_of_item)
         )
         # update P
@@ -229,7 +231,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
                 for o in objects_dummy if left_to_eat[o] > 0]+[np.inf]
         how_much_to_eat = min(
             min(threshhold_absolute - ate[a] for a in who_will_eat),
-            the_next_in_line / len(who_will_eat),
+            the_next_in_line,
             min(until_end_of_item)
         )
         # update P
@@ -275,7 +277,9 @@ def MPS_Lottery(agents, objects, preferences, alloc):
             np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
         )
         result.append((item[0], stack_agents))
-    return result, P[:, :-len(dummy)]
+    if len(dummy) >0:    
+        P = P[:, :-len(dummy)]
+    return result,P 
 
 
 def print_PS_Lottery(result, r, c, prefe, alloc):
@@ -326,18 +330,8 @@ def isEF(mat, pref) -> bool:
             my_sum = 0
             is_sum = 0
             for item in pref[me]:
-                my_sum += sum(
-                    [
-                        mat[me][theItem]
-                        for theItem in range(item, len(mat[0]), len(pref) + 1)
-                    ]
-                )
-                is_sum += sum(
-                    [
-                        mat[other][theItem]
-                        for theItem in range(item, len(mat[0]), len(pref) + 1)
-                    ]
-                )
+                my_sum += mat[me][item]
+                is_sum += mat[other][item]
                 if is_sum - 0.00001 > my_sum:
                     return False
     return True
@@ -351,19 +345,11 @@ def isEF1(mat, pref):
             my_sum = 0
             is_sum = -1
             for item in pref[me]:
-                my_sum += sum(
-                    [
-                        mat[me][theItem]
-                        for theItem in range(item, len(mat[0]), len(pref) + 1)
-                    ]
-                )
-                is_sum += sum(
-                    [
-                        mat[other][theItem]
-                        for theItem in range(item, len(mat[0]), len(pref) + 1)
-                    ]
-                )
+                my_sum += mat[me][item]
+                is_sum += mat[other][item]
                 if is_sum - 0.00000000001 > my_sum:
+                    print(f'I {me} envy {other} with {is_sum-my_sum} with the item {item} my pref is {pref[me]}')
+                    print(pref)
                     raise ValueError("ex-post ef1")
                     return (is_sum, my_sum)
     return True
@@ -377,62 +363,68 @@ def isEF2(mat, pref) -> bool:
             my_sum = 0
             is_sum = -2
             for item in pref[me]:
-                my_sum += sum(
-                    [
-                        mat[me][theItem]
-                        for theItem in range(item, len(mat[0]), len(pref) + 1)
-                    ]
-                )
-                is_sum += sum(
-                    [
-                        mat[other][theItem]
-                        for theItem in range(item, len(mat[0]), len(pref) + 1)
-                    ]
-                )
+                my_sum += mat[me][item]
+                is_sum += mat[other][item]
                 if is_sum - 0.00000000001 > my_sum:
                     raise ValueError("ex-post ef2")
                     return (is_sum, my_sum)
                     
     return True
 
+def generate_random_preferences(agents, items):
+    preferences = []
+    for agent in agents:
+        # Shuffle items to create a random preference list for each agent
+        shuffled_items = random.sample(items, len(items))
+        preferences.append(shuffled_items)
+    return preferences
 
 if __name__ == "__main__":
     # compare_solution_methods()
-    day = 0
-    agent = [0, 1, 2]
-    item = [0, 1]
-    alloction = np.zeros((len(agent), len(item)))
-    originalPref = [[0, 1], [0,1], [1, 0]]
-    while True:
-        print(
-            f"================================================\n                   day {day}              \n================================================"
-        )
+    num_of_test = 1000
+    test_per_sit = 100
+    max_agent= 3
+    max_object = 5
+    for _ in range (num_of_test):
+        day = 0
+        agent = [0, 1,2]
+        item = [0, 1,2]
+        originalPref = [[1,0,2],[0,1,2],[1,0,2]]
+        # agent = list(range(random.randint(2, max_agent)))
+        # item = list(range(random.randint(2, max_object)))
+        # originalPref = generate_random_preferences(agents=agent,items=item)
+        alloction = np.zeros((len(agent), len(item)))
+        for _ in range (test_per_sit):
+            print(
+                f"================================================\n                   day {day}              \n================================================"
+            )
 
-        #   given allocation and original pref give allocation
-        result = MPS_Lottery(
-            agents=agent, objects=item, preferences=originalPref, alloc=alloction
-        )
-        print_PS_Lottery(
-            result=[(1, result[1])],
-            r=agent,
-            c=item,
-            prefe=originalPref,
-            alloc=alloction,
-        )
-        print_PS_Lottery(
-            result=result[0], r=agent, c=item, prefe=originalPref, alloc=alloction
-        )
-        print(
-            "What you like to do? \nq) quit the program \n0-inf) enter the number of the matrix you want to allocate(default)"
-        )
-        user_input = -1
-        while user_input < 0 or user_input >= len(result[0]):
-            user_input = input()
-            if user_input == "q":
-                sys.exit()
-            user_input = int(user_input)
-        # update allocation
-        # get last 4 item
-        mat = result[0][int(user_input)][1]
-        alloction += mat
-        day += 1
+            #   given allocation and original pref give allocation
+            result = MPS_Lottery(
+                agents=agent, objects=item, preferences=originalPref, alloc=alloction
+            )
+            print_PS_Lottery(
+                result=[(1, result[1])],
+                r=agent,
+                c=item,
+                prefe=originalPref,
+                alloc=alloction,
+            )
+            print_PS_Lottery(
+                result=result[0], r=agent, c=item, prefe=originalPref, alloc=alloction
+            )
+            print(
+                "What you like to do? \nq) quit the program \n0-inf) enter the number of the matrix you want to allocate(default)"
+            )
+            user_input = 0
+            # user_input = -1
+            # while user_input < 0 or user_input >= len(result[0]):
+            #     user_input = input()
+            #     if user_input == "q":
+            #         sys.exit()
+            #     user_input = int(user_input)
+            # update allocation
+            # get last 4 item
+            mat = result[0][int(user_input)][1]
+            alloction += mat
+            day += 1
