@@ -1,13 +1,8 @@
 import copy
 import math
 import random
-import sys
-import numpy as np
 
-import networkx as nx
-import numpy
 import numpy as np
-from matplotlib import pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
 
@@ -27,9 +22,9 @@ def bikroft(matrix: np.array) -> list:
     row_sums = np.sum(matrix, axis=1)
     col_sums = np.sum(matrix, axis=0)
     if (
-        not np.allclose(row_sums, 1)
-        or not np.allclose(col_sums, 1)
-        or not np.all(matrix >= 0)
+            not np.allclose(row_sums, 1)
+            or not np.allclose(col_sums, 1)
+            or not np.all(matrix >= 0)
     ):
         print(matrix)
         raise ValueError("must be a bistochastic matrix")
@@ -94,7 +89,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
     ]
     # 3) alloction
     alloc_tmp = copy.deepcopy(alloc)
-    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n,n*c-m))))
+    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n, n * c - m))))
     # 4) prefrence
     preferences_tmp = copy.deepcopy(preferences_dummy)
     # 5)freshhold
@@ -124,10 +119,10 @@ def MPS_Lottery(agents, objects, preferences, alloc):
         who_will_eat = [a for a in who_can_eat if have_from_my_item[a] <= 0]
         the_next_in_line = min([x for x in have_from_my_item if x > 0] + [np.inf])
         # calculate how much can eat min(diff from threshhold, the next in line,item eaten)
-        until_end_of_item = [left_to_eat[o]/
+        until_end_of_item = [left_to_eat[o] /
                              (1 if len([x for x in who_will_eat if what_i_want_eat[x] == o]) == 0
-                    else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
-                for o in objects_dummy if left_to_eat[o] > 0]+[np.inf]
+                              else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
+                             for o in objects_dummy if left_to_eat[o] > 0] + [np.inf]
         how_much_to_eat = min(
             min(threshhold - ate[a] for a in who_will_eat),
             # the_next_in_line / len(who_will_eat),
@@ -143,8 +138,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
 
         for a in who_will_eat:
             left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
-        left_to_eat = [np.round(a,8) for a in left_to_eat]
-
+        left_to_eat = [np.round(a, 8) for a in left_to_eat]
 
         how_much_been_eaten = len(who_will_eat) * how_much_to_eat
         for a in [a for a in agents if a not in who_will_eat]:
@@ -157,7 +151,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
     # only the behind eat until they cant
     while True:
         # first who can eat when in non break
-        who_can_eat = [agents[i] for i in range(len(agents)) if marked[i] and ate[i]<threshhold_absolute ]
+        who_can_eat = [agents[i] for i in range(len(agents)) if marked[i] and ate[i] < threshhold_absolute]
 
         if who_can_eat == [] or sum(left_to_eat) == 0:
             break
@@ -175,10 +169,10 @@ def MPS_Lottery(agents, objects, preferences, alloc):
         who_will_eat = [a for a in who_can_eat if have_from_my_item[a] <= 0]
         the_next_in_line = min([x for x in have_from_my_item if x > 0] + [np.inf])
         # calculate how much can eat min(diff from threshhold, the next in line,item eaten)
-        until_end_of_item = [left_to_eat[o]/
+        until_end_of_item = [left_to_eat[o] /
                              (1 if len([x for x in who_will_eat if what_i_want_eat[x] == o]) == 0
-                    else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
-                for o in objects_dummy if left_to_eat[o] > 0]+[np.inf]
+                              else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
+                             for o in objects_dummy if left_to_eat[o] > 0] + [np.inf]
         how_much_to_eat = min(
             min(threshhold_absolute - ate[a] for a in who_will_eat),
             the_next_in_line,
@@ -193,8 +187,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
 
         for a in who_will_eat:
             left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
-        left_to_eat = [np.round(a,8) for a in left_to_eat]
-
+        left_to_eat = [np.round(a, 8) for a in left_to_eat]
 
         how_much_been_eaten = len(who_will_eat) * how_much_to_eat
         for a in [a for a in agents if a not in who_will_eat]:
@@ -207,7 +200,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
     # the rest(not marked) eat until they done
     while True:
         # first who can eat when in non break
-        who_can_eat = [agents[i] for i in range(len(agents)) if not marked[i]and ate[i]<threshhold_absolute]
+        who_can_eat = [agents[i] for i in range(len(agents)) if not marked[i] and ate[i] < threshhold_absolute]
 
         if who_can_eat == [] or sum(left_to_eat) == 0:
             break
@@ -225,10 +218,10 @@ def MPS_Lottery(agents, objects, preferences, alloc):
         who_will_eat = [a for a in who_can_eat if have_from_my_item[a] <= 0]
         the_next_in_line = min([x for x in have_from_my_item if x > 0] + [np.inf])
         # calculate how much can eat min(diff from threshhold, the next in line,item eaten)
-        until_end_of_item = [left_to_eat[o]/
+        until_end_of_item = [left_to_eat[o] /
                              (1 if len([x for x in who_will_eat if what_i_want_eat[x] == o]) == 0
-                    else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
-                for o in objects_dummy if left_to_eat[o] > 0]+[np.inf]
+                              else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
+                             for o in objects_dummy if left_to_eat[o] > 0] + [np.inf]
         how_much_to_eat = min(
             min(threshhold_absolute - ate[a] for a in who_will_eat),
             the_next_in_line,
@@ -243,8 +236,7 @@ def MPS_Lottery(agents, objects, preferences, alloc):
 
         for a in who_will_eat:
             left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
-        left_to_eat = [np.round(a,8) for a in left_to_eat]
-
+        left_to_eat = [np.round(a, 8) for a in left_to_eat]
 
         how_much_been_eaten = len(who_will_eat) * how_much_to_eat
         for a in [a for a in agents if a not in who_will_eat]:
@@ -277,9 +269,9 @@ def MPS_Lottery(agents, objects, preferences, alloc):
             np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
         )
         result.append((item[0], stack_agents))
-    if len(dummy) >0:    
+    if len(dummy) > 0:
         P = P[:, :-len(dummy)]
-    return result,P 
+    return result, P
 
 
 def print_PS_Lottery(result, r, c, prefe, alloc):
@@ -290,13 +282,12 @@ def print_PS_Lottery(result, r, c, prefe, alloc):
         print(f"Probability: {item[0]}")
         print(f"Matrix No {index}:")
         print_mat(newMat, r, c)
-        print(f"Is ex-post EF? {isEF(newMat,prefe)}")
-        print(f"Is ex-post EF-1? {isEF1(newMat,prefe)}")
-        print(f"Is ex-post EF-2? {isEF2(newMat,prefe)}")
+        print(f"Is ex-post EF? {isEF(newMat, prefe)}")
+        print(f"Is ex-post EF-1? {isEF1(newMat, prefe)}")
+        print(f"Is ex-post EF-2? {isEF2(newMat, prefe)}")
 
         print()
         index += 1
-
 
 
 def print_mat(matrix, row, col):
@@ -305,10 +296,10 @@ def print_mat(matrix, row, col):
 
     # Ensure the length of row_names and column_names match the dimensions of the matrix
     assert (
-        len(row_names) == matrix.shape[0]
+            len(row_names) == matrix.shape[0]
     ), "Row names length must match number of rows in the matrix."
     assert (
-        len(column_names) == matrix.shape[1]
+            len(column_names) == matrix.shape[1]
     ), "Column names length must match number of columns in the matrix."
 
     # Print table header
@@ -348,7 +339,7 @@ def isEF1(mat, pref):
                 my_sum += mat[me][item]
                 is_sum += mat[other][item]
                 if is_sum - 0.00000000001 > my_sum:
-                    print(f'I {me} envy {other} with {is_sum-my_sum} with the item {item} my pref is {pref[me]}')
+                    print(f'I {me} envy {other} with {is_sum - my_sum} with the item {item} my pref is {pref[me]}')
                     print(pref)
                     raise ValueError("ex-post ef1")
                     return (is_sum, my_sum)
@@ -368,8 +359,9 @@ def isEF2(mat, pref) -> bool:
                 if is_sum - 0.00000000001 > my_sum:
                     raise ValueError("ex-post ef2")
                     return (is_sum, my_sum)
-                    
+
     return True
+
 
 def generate_random_preferences(agents, items):
     preferences = []
@@ -379,22 +371,23 @@ def generate_random_preferences(agents, items):
         preferences.append(shuffled_items)
     return preferences
 
+
 if __name__ == "__main__":
     # compare_solution_methods()
     num_of_test = 1000
     test_per_sit = 100
-    max_agent= 3
+    max_agent = 3
     max_object = 5
-    for _ in range (num_of_test):
+    for _ in range(num_of_test):
         day = 0
-        agent = [0, 1,2]
-        item = [0, 1,2]
-        originalPref = [[1,0,2],[0,1,2],[1,0,2]]
+        agent = [0, 1, 2]
+        item = [0, 1, 2]
+        originalPref = [[1, 0, 2], [0, 1, 2], [1, 0, 2]]
         # agent = list(range(random.randint(2, max_agent)))
         # item = list(range(random.randint(2, max_object)))
         # originalPref = generate_random_preferences(agents=agent,items=item)
         alloction = np.zeros((len(agent), len(item)))
-        for _ in range (test_per_sit):
+        for _ in range(test_per_sit):
             print(
                 f"================================================\n                   day {day}              \n================================================"
             )
