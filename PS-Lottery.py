@@ -356,55 +356,6 @@ def rnd_pref(agents, objects):
     return prefrence
 
 
-def compare_solution_methods():
-    """
-    Compare the time taken to solve linear equations with the root function and with np.linalg.solve.
-    we take samples is from 1 to 1000 with jumps of 10, each run 10 time and compute the average.
-    after getting the times plot them together in one graph.
-
-    """
-    sizes = range(7, 15, 1)
-    iteration = 1
-    PS_times = []
-    EPS_times = []
-    for i, size in enumerate(sizes):
-        print("*" * 20 + str(i) + "*" * 20)
-        PS_times_for_average = []
-        EPS_times_for_average = []
-        for _ in range(iteration):
-            objects = np.random.randint(size - 5, size + 5)
-            prefrence = rnd_pref(size, objects)
-            PS_times_for_average.append(
-                measure_time(
-                    PS_Lottery,
-                    list(range(size)),
-                    list(range(objects)),
-                    prefrence,
-                    use_EPS=False,
-                )
-            )
-            EPS_times_for_average.append(
-                measure_time(
-                    PS_Lottery,
-                    list(range(size)),
-                    list(range(objects)),
-                    prefrence,
-                    use_EPS=True,
-                )
-            )
-
-        PS_times.append(np.average(PS_times_for_average))
-        EPS_times.append(np.average(EPS_times_for_average))
-    plt.plot(sizes, PS_times, "g-", label="PS")
-    plt.plot(sizes, EPS_times, "b-", label="EPS")
-    plt.xlabel("Size")
-    plt.ylabel("time in sec")
-    plt.legend()
-    plt.savefig(
-        "compere.png"
-    )  # after you plot the graphs, save them to a file and upload it separately.
-    plt.show()  # this should show the plot on your screen
-
 def combine_columns(matrix, n):
     # Convert to a NumPy array if it's not already
     matrix = np.array(matrix)
@@ -518,7 +469,7 @@ def isEF2(mat, pref) -> bool:
                     ]
                 )
                 if is_sum - 0.00000000001 > my_sum:
-                    return (is_sum,my_sum)
+                    print (f"{is_sum,my_sum}")
                     raise ValueError("ex-post ef2")
     return True
 
@@ -553,14 +504,26 @@ def update(originalPref, allocaion, day, leap=1):
         newLL.append(tmp)
     return newLL
 
+def generate_random_preferences(agents, items):
+    preferences = []
+    for agent in agents:
+        # Shuffle items to create a random preference list for each agent
+        shuffled_items = random.sample(items, len(items))
+        preferences.append(shuffled_items)
+    return preferences
+
 
 if __name__ == "__main__":
     # compare_solution_methods()
     day = 0
+    num = 3
+    # agent = list(range(num))
+    # item = list(range(num))
+    # originalPref = generate_random_preferences(agents=agent, items=item)
     agent = [0, 1, 2]
     item = [0, 1, 2, 3]
-    alloction = [[] for _ in agent]
     originalPref = [[0, 1, 2, 3], [0, 2, 1, 3], [3, 1, 0, 2]]
+    alloction = [[] for _ in agent]
     while True:
         print(f'=======================================\n                   day {day}              \n===============================')
         thisDayItem = list(range((day+1)*len(item)))
@@ -578,7 +541,8 @@ if __name__ == "__main__":
         print_PS_Lottery(result=result, r=agent, c=item, prefe=originalPref)
 
         print("What you like to do? \nq) quit the program \n0-inf) enter the number of the matrix you want to allocate(default)")
-        user_input = input()
+        # user_input = input()
+        user_input = 0
 
         if user_input == "q":
             break

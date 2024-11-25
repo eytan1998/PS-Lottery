@@ -1,8 +1,11 @@
 import copy
 import math
 import random
+import networkx as nx
 
 import numpy as np
+from matplotlib import pyplot as plt
+from networkx.drawing import bipartite_layout
 from scipy.optimize import linear_sum_assignment
 
 
@@ -21,112 +24,67 @@ def Envy_Lottery(agents, objects, preferences, alloc):
     # assignment
     n = len(agents)
     m = len(objects)
-    c = math.ceil(m / n)
-    # 1 make dummy object
-    dummy = list(range(m, m + (n * c - m)))
-    # 2 add the dummy to the real
-    objects_dummy = objects + dummy
-    # 4 new preference
-    preferences_dummy = [pref + dummy for pref in preferences]
-    # 5 run Eats
-    P = np.zeros((n, len(objects_dummy)))
 
-    # for each agent I want to know
-    ate = [0 for _ in agents]
-    threshhold = math.ceil(m / n)
+    # Create a bipartite graph
+    B = nx.Graph()
 
-    # alloction
+    # Add nodes with the bipartite attribute
+    top_nodes = [i for i in range(n)]
+    bottom_nodes = [chr(i+ord('A')) for i in range(m)]
+    B.add_nodes_from(top_nodes, bipartite=0)
+    B.add_nodes_from(bottom_nodes, bipartite=1)
+
+    # Create a matrix representation
+    matrix_size = (len(top_nodes), len(bottom_nodes))
+    matching_matrix = np.zeros(matrix_size, dtype=int)
+
     alloc_tmp = copy.deepcopy(alloc)
-    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n, n * c - m))))
+    preferences_tmp = copy.deepcopy(preferences)
 
-    # prefrence
-    preferences_tmp = copy.deepcopy(preferences_dummy)
-
-    # left to eat
-    left_to_eat = [1 for _ in objects_dummy]
-
-
-
-    while sum(left_to_eat) > 0:
-
-        who_can_eat = [agents[i] for i in range(len(agents)) if ate[i] < threshhold]
-        if who_can_eat == []:
-            break
+    while True:
+        # add v for the one with the most envy
 
         # get the envy level the most envy number + and the index of him
         envy_level = getEnvyLevel(alloc_tmp, preferences)
-        who_will_eat = getTheWhoMostEnvy(envy_level,who_can_eat)
-
-        # min of
-        # how much left from the wanted item to eat / how much wanting to eat him
-        # ???? the dist to next envy
-        what_i_want_eat = [
-            -1 if preferences_tmp[a] == [] else preferences_tmp[a][0] for a in agents
-        ]
-        until_end_of_item = [left_to_eat[o] /
-                             (1 if len([x for x in who_will_eat if what_i_want_eat[x] == o]) == 0
-                              else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
-                             for o in objects_dummy if left_to_eat[o] > 0] + [np.inf]
-        how_much_to_eat = min([min(until_end_of_item)
-                              ,min(threshhold - ate[a] for a in who_will_eat)])
-
-        # update P
-        for a in who_will_eat:
-            P[a][what_i_want_eat[a]] += how_much_to_eat
-            alloc_tmp[a][what_i_want_eat[a]] += how_much_to_eat
-
-            # remove the eaten from who can eat, and the sum from the delay of who didnt eat
-        for a in who_will_eat:
-            ate[a] += how_much_to_eat
+        who_will_eat = getTheWhoMostEnvy(envy_level, agents)
 
         for a in who_will_eat:
-            left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
-        # TODO np.round
-        left_to_eat = [np.round(a, 8) for a in left_to_eat]
+            if not preferences_tmp[a]:
+                continue
+            B.add_edge(a, chr(preferences_tmp[a][0]+ord('A')))
+            alloc_tmp[a][preferences_tmp[a][0]] += 1
+            preferences_tmp[a].pop(0)
+
+        # # Draw the bipartite graph
+        # pos = nx.bipartite_layout(B, top_nodes)  # Position nodes in bipartite layout
+        # nx.draw(B, pos, with_labels=True, node_color=['skyblue' if n in top_nodes else 'lightgreen' for n in B.nodes()])
+        # plt.title("Bipartite Graph")
+        # plt.show()
+
+        # Check for a perfect matching
+        matching = nx.bipartite.maximum_matching(B,top_nodes)
+        # Extract the matching pairs
+        perfect_matching = {u: v for u, v in matching.items() if u in top_nodes}
+        if len(perfect_matching) == len(top_nodes):
+            for u, v in perfect_matching.items():
+                i = top_nodes.index(u)
+                j = bottom_nodes.index(v)
+                matching_matrix[i, j] = 1  # Mark the matching pair
+            break
 
 
 
-        # update the next to eat(tmp_prefrence)
-        for i in range(len(preferences_tmp)):
-            preferences_tmp[i] = [x for x in preferences_tmp[i] if left_to_eat[x] > 0]
-
-    # split to presenters
-    extP = np.zeros((n * c, n * c))
-    for i, pref in enumerate(preferences_dummy):
-        ate = 0
-        agent = i
-        for o in pref:
-            if ate + P[i][o] <= 1:
-                extP[agent][o] = P[i][o]
-                ate += P[i][o]
-            else:
-                extP[agent][o] = 1 - ate
-                agent = agent + n
-                extP[agent][o] = P[i][o] - (1 - ate)
-                ate = P[i][o] - (1 - ate)
-    # after got the matrix from PS, run bikroft
-    # and change it to the original agent and object
-    result = []
-    for item in bikroft(extP):
-        remove_dummy = np.delete(item[1], dummy, axis=1)
-        stack_agents = np.array(
-            np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
-        )
-        result.append((item[0], stack_agents))
-    if len(dummy) > 0:
-        P = P[:, :-len(dummy)]
-    return result, P
+    return matching_matrix, matching_matrix
 
 
 def getTheWhoMostEnvy(envy_level,ag):
-    max_envy = max(t[0] if index in ag else -1 for index,t in enumerate(envy_level))
-    # candidates = [(index, t) for index, t in enumerate(envy_level) if t[0] == max_envy and index in ag]
-    return [index for index, t in enumerate(envy_level) if t[0] == max_envy and index in ag]
+    max_envy = max(t[0] if i in ag else -1 for i,t in enumerate(envy_level))
+    candidates = [(index, t) for index, t in enumerate(envy_level) if t[0] == max_envy and index in ag]
     min_index = min(t[1] for index, t in candidates)
     return [index for index, t in candidates if t[1] == min_index]
 
 
-def getEnvyLevel(mat, pref ):
+def getEnvyLevel(mat, pref ) -> bool:
     envy_level = [(0, np.inf) for _ in range(len(mat[0]))]
     for me in range(len(mat)):
         for other in range(len(mat)):
@@ -136,62 +94,11 @@ def getEnvyLevel(mat, pref ):
             for i, item in enumerate(pref[me]):
                 my_sum += mat[me][item]
                 is_sum += mat[other][item]
-                if is_sum > my_sum:
-                    if envy_level[me][0] > is_sum - my_sum:
-                        continue
-                    if envy_level[me][0] < is_sum - my_sum  :
-                        envy_level[me] = (is_sum - my_sum, i)
-                    elif envy_level[me][1] > i:
-                        envy_level[me] = (is_sum - my_sum, i)
+                if is_sum - 0.00001 > my_sum:
+                    envy_level[me] = (is_sum - my_sum, i)
     return envy_level
 
 
-def bikroft(matrix: np.array) -> list:
-    """
-    Consider any random allocation with n agents and n
-    items in which each agent gets one unit of items. Birkhoff’s algorithm can
-    decompose such a random allocation (which can be represented by a bistochastic
-    matrix) into a convex combination of at most n2 −n+1 deterministic allocations
-    (represented by permutation matrices)
-    :param matrix: square bistochastic
-    :return P: deterministic allocations represented by permutation matrices with probability for each matrix
-    """
-    # check is square
-    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("must be a square matrix")
-    row_sums = np.sum(matrix, axis=1)
-    col_sums = np.sum(matrix, axis=0)
-    if (
-            not np.allclose(row_sums, 1)
-            or not np.allclose(col_sums, 1)
-            or not np.all(matrix >= 0)
-    ):
-        print(matrix)
-        raise ValueError("must be a bistochastic matrix")
-
-    P = []
-    M0 = np.zeros((matrix.shape[0], matrix.shape[1]))
-
-    while not np.allclose(matrix, M0):
-        # Replace zeros with a large value
-        modified_matrix = np.where(matrix == 0, np.inf, matrix)
-        # Apply linear_sum_assignment to find the optimal assignment
-        row_indices, col_indices = linear_sum_assignment(modified_matrix)
-        # Find the edges corresponding to the matched pairs
-        edges = [
-            (row, col)
-            for row, col in zip(row_indices, col_indices)
-            if matrix[row, col] != 0
-        ]
-
-        scalar = min(matrix[x][y] for x, y in edges)
-
-        P_tmp = np.zeros_like(matrix)
-        for x, y in edges:
-            P_tmp[x, y] = 1
-        P.append((scalar, P_tmp))
-        matrix = matrix - P_tmp * scalar
-    return P
 
 
 def print_PS_Lottery(res, r, c, prefe, alloc):

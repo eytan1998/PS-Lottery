@@ -6,146 +6,6 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
-def Envy_Lottery(agents, objects, preferences, alloc):
-    """
-    Algorithm that utilize the PS algorithm and Bikroft algorithm to make Simultaneously Achieving Ex-ante and
-    Ex-post Fairness with no need for number of agents and object to be equal. and if using ehr EPS algorithm,
-    it will achieve that even with not strictly prefrence
-    :param agents: get number of agents
-    :param objects: get number of object
-    :param preferences: for each agent need order list corresponding to the most preferred objects (index) to the least,
-    it can have set of index if he preferred them the same
-    :param use_EPS: difficult false, if true run EPS, if false handel ties with lexicographically order.
-    :return: list of deterministic allocation matrix and scalar that represent the chance for this allocation
-    """
-    # assignment
-    n = len(agents)
-    m = len(objects)
-    c = math.ceil(m / n)
-    # 1 make dummy object
-    dummy = list(range(m, m + (n * c - m)))
-    # 2 add the dummy to the real
-    objects_dummy = objects + dummy
-    # 4 new preference
-    preferences_dummy = [pref + dummy for pref in preferences]
-    # 5 run Eats
-    P = np.zeros((n, len(objects_dummy)))
-
-    # for each agent I want to know
-    ate = [0 for _ in agents]
-    threshhold = math.ceil(m / n)
-
-    # alloction
-    alloc_tmp = copy.deepcopy(alloc)
-    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n, n * c - m))))
-
-    # prefrence
-    preferences_tmp = copy.deepcopy(preferences_dummy)
-
-    # left to eat
-    left_to_eat = [1 for _ in objects_dummy]
-
-
-
-    while sum(left_to_eat) > 0:
-
-        who_can_eat = [agents[i] for i in range(len(agents)) if ate[i] < threshhold]
-        if who_can_eat == []:
-            break
-
-        # get the envy level the most envy number + and the index of him
-        envy_level = getEnvyLevel(alloc_tmp, preferences)
-        who_will_eat = getTheWhoMostEnvy(envy_level,who_can_eat)
-
-        # min of
-        # how much left from the wanted item to eat / how much wanting to eat him
-        # ???? the dist to next envy
-        what_i_want_eat = [
-            -1 if preferences_tmp[a] == [] else preferences_tmp[a][0] for a in agents
-        ]
-        until_end_of_item = [left_to_eat[o] /
-                             (1 if len([x for x in who_will_eat if what_i_want_eat[x] == o]) == 0
-                              else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
-                             for o in objects_dummy if left_to_eat[o] > 0] + [np.inf]
-        how_much_to_eat = min([min(until_end_of_item)
-                              ,min(threshhold - ate[a] for a in who_will_eat)])
-
-        # update P
-        for a in who_will_eat:
-            P[a][what_i_want_eat[a]] += how_much_to_eat
-            alloc_tmp[a][what_i_want_eat[a]] += how_much_to_eat
-
-            # remove the eaten from who can eat, and the sum from the delay of who didnt eat
-        for a in who_will_eat:
-            ate[a] += how_much_to_eat
-
-        for a in who_will_eat:
-            left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
-        # TODO np.round
-        left_to_eat = [np.round(a, 8) for a in left_to_eat]
-
-
-
-        # update the next to eat(tmp_prefrence)
-        for i in range(len(preferences_tmp)):
-            preferences_tmp[i] = [x for x in preferences_tmp[i] if left_to_eat[x] > 0]
-
-    # split to presenters
-    extP = np.zeros((n * c, n * c))
-    for i, pref in enumerate(preferences_dummy):
-        ate = 0
-        agent = i
-        for o in pref:
-            if ate + P[i][o] <= 1:
-                extP[agent][o] = P[i][o]
-                ate += P[i][o]
-            else:
-                extP[agent][o] = 1 - ate
-                agent = agent + n
-                extP[agent][o] = P[i][o] - (1 - ate)
-                ate = P[i][o] - (1 - ate)
-    # after got the matrix from PS, run bikroft
-    # and change it to the original agent and object
-    result = []
-    for item in bikroft(extP):
-        remove_dummy = np.delete(item[1], dummy, axis=1)
-        stack_agents = np.array(
-            np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
-        )
-        result.append((item[0], stack_agents))
-    if len(dummy) > 0:
-        P = P[:, :-len(dummy)]
-    return result, P
-
-
-def getTheWhoMostEnvy(envy_level,ag):
-    max_envy = max(t[0] if index in ag else -1 for index,t in enumerate(envy_level))
-    # candidates = [(index, t) for index, t in enumerate(envy_level) if t[0] == max_envy and index in ag]
-    return [index for index, t in enumerate(envy_level) if t[0] == max_envy and index in ag]
-    min_index = min(t[1] for index, t in candidates)
-    return [index for index, t in candidates if t[1] == min_index]
-
-
-def getEnvyLevel(mat, pref ):
-    envy_level = [(0, np.inf) for _ in range(len(mat[0]))]
-    for me in range(len(mat)):
-        for other in range(len(mat)):
-            if me == other:
-                continue
-            my_sum = is_sum = 0
-            for i, item in enumerate(pref[me]):
-                my_sum += mat[me][item]
-                is_sum += mat[other][item]
-                if is_sum > my_sum:
-                    if envy_level[me][0] > is_sum - my_sum:
-                        continue
-                    if envy_level[me][0] < is_sum - my_sum  :
-                        envy_level[me] = (is_sum - my_sum, i)
-                    elif envy_level[me][1] > i:
-                        envy_level[me] = (is_sum - my_sum, i)
-    return envy_level
-
-
 def bikroft(matrix: np.array) -> list:
     """
     Consider any random allocation with n agents and n
@@ -194,17 +54,154 @@ def bikroft(matrix: np.array) -> list:
     return P
 
 
-def print_PS_Lottery(res, r, c, prefe, alloc):
+def MPS_Lottery(agents, objects, preferences, alloc):
+    """
+    Algorithm that utilize the PS algorithm and Bikroft algorithm to make Simultaneously Achieving Ex-ante and
+    Ex-post Fairness with no need for number of agents and object to be equal. and if using ehr EPS algorithm,
+    it will achieve that even with not strictly prefrence
+    :param agents: get number of agents
+    :param objects: get number of object
+    :param preferences: for each agent need order list corresponding to the most preferred objects (index) to the least,
+    it can have set of index if he preferred them the same
+    :param use_EPS: difficult false, if true run EPS, if false handel ties with lexicographically order.
+    :return: list of deterministic allocation matrix and scalar that represent the chance for this allocation
+    """
+    # assignment
+    n = len(agents)
+    m = len(objects)
+    c = math.ceil(m / n)
+    c = 1
+    # 1 make dummy object
+    dummy = list(range(m, m + (n * c - m)))
+    dummy = []
+    # 2 add the dummy to the real
+    objects_dummy = objects + dummy
+    # 4 new preference
+    preferences_dummy = [pref + dummy for pref in preferences]
+    # 5 run Eats
+    P = np.zeros((n, len(objects_dummy)))
+    P = np.zeros((n, n))
+
+    # for each agent i want to know
+
+    # 1) ate
+    ate = [0 for _ in agents]
+    # 2) marked [[0,1],[2,3],[4,1]]
+    marked = [
+        True if sum(al) < max(sum(al) for al in alloc) else False for al in alloc
+    ]
+    # 3) alloction
+    alloc_tmp = copy.deepcopy(alloc)
+    alloc_tmp = np.hstack((alloc_tmp, np.zeros((n, n * c - m))))
+    # 4) prefrence
+    preferences_tmp = copy.deepcopy(preferences_dummy)
+    # 5)freshhold
+    threshhold = math.floor(m / n)
+    # 6) eaten
+    left_to_eat = [1 for _ in objects_dummy]
+
+    ro = 0
+    # eat until the cant eat
+    while True:
+        if ro > 1000:
+            raise ValueError("asd")
+        ro += 1
+        # first who can eat when in non break
+        who_can_eat = [agents[i] for i in range(len(agents)) if round(ate[i],8) < threshhold]
+        if not who_can_eat:
+            break
+
+        what_i_want_eat = [
+            -1 if preferences_tmp[a] == [] else preferences_tmp[a][0] for a in agents
+        ]
+
+        # get the min of all alloction and reduce from all
+        min_of_all = min(alloc_tmp[a][what_i_want_eat[a]] for a in who_can_eat)
+        for ag in agents:
+            alloc_tmp[ag][what_i_want_eat[ag]] -= min_of_all
+
+        # choose who eats == 0
+        have_from_my_item = [alloc_tmp[a][what_i_want_eat[a]] for a in agents]
+        who_will_eat = [a for a in who_can_eat if have_from_my_item[a] <= 0]
+        the_next_in_line = min([x for x in have_from_my_item if x > 0] + [np.inf])
+        # calculate how much can eat min(diff from threshhold, the next in line,item eaten)
+        until_end_of_item = [left_to_eat[o] /
+                             (1 if len([x for x in who_will_eat if what_i_want_eat[x] == o]) == 0
+                              else len([x for x in who_will_eat if what_i_want_eat[x] == o]))
+                             for o in objects_dummy if left_to_eat[o] > 0] + [np.inf]
+        how_much_to_eat = min(
+            min(threshhold - ate[a] for a in who_will_eat),
+            # the_next_in_line / len(who_will_eat),
+            the_next_in_line,
+            min(until_end_of_item)
+        )
+        # update P
+        for a in who_will_eat:
+            P[a][what_i_want_eat[a]] += how_much_to_eat
+        # remove the eaten from who can eat, and the sum from the delay of who didnt eat
+        for a in who_will_eat:
+            ate[a] += how_much_to_eat
+
+        for a in who_will_eat:
+            left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
+        left_to_eat = [np.round(a, 8) for a in left_to_eat]
+
+        how_much_been_eaten = len(who_will_eat) * how_much_to_eat
+        for a in [a for a in agents if a not in who_will_eat]:
+            alloc_tmp[a][what_i_want_eat[a]] -= how_much_been_eaten
+
+        # move allocation from this to next
+        for a,p in enumerate(preferences_tmp):
+            carryToNext = 0
+            for i in p:
+                alloc_tmp[a][i] += carryToNext
+                if left_to_eat[i] <= 0:
+                    carryToNext += alloc_tmp[a][i]
+
+
+        # update the next to eat(tmp_preference)
+        for i in range(len(preferences_tmp)):
+            preferences_tmp[i] = [x for x in preferences_tmp[i] if left_to_eat[x] > 0]
+
+    # split to presenters
+    extP = np.zeros((n * c, n * c))
+    for i, pref in enumerate(preferences_dummy):
+        ate = 0
+        agent = i
+        for o in pref:
+            if ate + P[i][o] <= 1:
+                extP[agent][o] = P[i][o]
+                ate += P[i][o]
+            else:
+                extP[agent][o] = 1 - ate
+                agent = agent + n
+                extP[agent][o] = P[i][o] - (1 - ate)
+                ate = P[i][o] - (1 - ate)
+    # after got the matrix from PS, run bikroft
+    # and change it to the original agent and object
+    result = []
+    for item in bikroft(extP):
+        remove_dummy = np.delete(item[1], dummy, axis=1)
+        stack_agents = np.array(
+            np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
+        )
+        result.append((item[0], stack_agents))
+    if len(dummy) > 0:
+        P = P[:, :-len(dummy)]
+    return result, P
+
+
+def print_PS_Lottery(result, r, c, prefe, alloc):
     print("================================================")
     index = 0
-    for item in res:
-        new_mat = alloc + item[1]
+    for item in result:
+        newMat = alloc + item[1]
         print(f"Probability: {item[0]}")
         print(f"Matrix No {index}:")
-        print_mat(new_mat, r, c)
-        print(f"Is ex-post EF? {isEF(new_mat, prefe)}")
-        print(f"Is ex-post EF-1? {isEF1(new_mat, prefe)}")
-        print(f"Is ex-post EF-2? {isEF2(new_mat, prefe)}")
+        print_mat(newMat, r, c)
+        print(f"Is ex-post EF? {isEF(newMat, prefe)}")
+        print(f"Is ex-post EF-1? {isEF1(newMat, prefe)}")
+        print(f"Is ex-post EF-2? {isEF2(newMat, prefe)}")
 
         print()
         index += 1
@@ -259,9 +256,10 @@ def isEF1(mat, pref):
                 my_sum += mat[me][item]
                 is_sum += mat[other][item]
                 if is_sum - 0.00000000001 > my_sum:
-                    print(f'I {me} envy {other} with {is_sum - my_sum} with the item {item} my pref is {pref[me]}')
-                    print(pref)
-                    raise ValueError("ex-post ef1")
+                    # print(f'I {me} envy {other} with {is_sum - my_sum} with the item {item} my pref is {pref[me]}')
+                    # print(pref)
+                    # raise ValueError("ex-post ef2")
+                    return False
     return True
 
 
@@ -279,6 +277,7 @@ def isEF2(mat, pref) -> bool:
                     print(f'I {me} envy {other} with {is_sum - my_sum} with the item {item} my pref is {pref[me]}')
                     print(pref)
                     raise ValueError("ex-post ef2")
+                    # return (is_sum, my_sum)
 
     return True
 
@@ -293,42 +292,49 @@ def generate_random_preferences(agents, items):
 
 
 if __name__ == "__main__":
-    num_of_test = 1000
+    # compare_solution_methods()
+    num_of_test = 1000000
     test_per_sit = 100
     max_agent = 3
-    max_object = 5
+    max_object = 3
     for _ in range(num_of_test):
         day = 0
-        agent = [0, 1, 2]
-        items = [0, 1, 2]
-        originalPref = [[1, 0, 2], [0, 1, 2], [1, 0, 2]]
-        # agent = list(range(random.randint(2, max_agent)))
-        # agent = items = list(range(random.randint(2, max_object)))
-        # originalPref = generate_random_preferences(agents=agent,items=items)
-        alloction = np.zeros((len(agent), len(items)))
+        # agent = [0, 1, 2]
+        # item = [0, 1, 2]
+        # originalPref = [[1, 0, 2], [0, 1, 2], [1, 0, 2]]
+        # num = random.randint(2, max_agent)
+        num = 3
+        agent = list(range(num))
+        item = list(range(num))
+        originalPref = generate_random_preferences(agents=agent,items=item)
+        alloction = np.zeros((len(agent), len(item)))
         for _ in range(test_per_sit):
             print(
                 f"================================================\n                   day {day}              \n================================================"
             )
 
             #   given allocation and original pref give allocation
-            result = Envy_Lottery(
-                agents=agent, objects=items, preferences=originalPref, alloc=alloction
-            )
+            try:
+                result = MPS_Lottery(
+                    agents=agent, objects=item, preferences=originalPref, alloc=alloction)
+
+            except:
+                break
+
             print_PS_Lottery(
-                res=[(1, result[1])],
+                result=[(1, result[1])],
                 r=agent,
-                c=items,
+                c=item,
                 prefe=originalPref,
                 alloc=alloction,
             )
             print_PS_Lottery(
-                res=result[0], r=agent, c=items, prefe=originalPref, alloc=alloction
+                result=result[0], r=agent, c=item, prefe=originalPref, alloc=alloction
             )
             print(
                 "What you like to do? \nq) quit the program \n0-inf) enter the number of the matrix you want to allocate(default)"
             )
-            user_input = 0
+            user_input = random.randint(0, len(result[0])-1)
             # user_input = -1
             # while user_input < 0 or user_input >= len(result[0]):
             #     user_input = input()
