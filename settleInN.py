@@ -1,7 +1,8 @@
 import copy
 import random
-from time import sleep
+from concurrent.futures import ThreadPoolExecutor
 
+# import PyQt6
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import linear_sum_assignment
@@ -93,23 +94,25 @@ def MPS_Lottery(agents, objects, preferences, alloc):
             alloc_tmp[:, col] = np.where(alloc_tmp[:, col] == 0, 1 / num_zeros, alloc_tmp[:, col])
     P = alloc_tmp- alloc
     # split to presenters
-    extP = np.zeros((n, n))
-    for i, pref in enumerate(preferences_tmp):
-        ate = 0
-        age = i
-        for o in pref:
-            if ate + P[i][o] <= 1:
-                extP[age][o] = P[i][o]
-                ate += P[i][o]
-            else:
-                extP[age][o] = 1 - ate
-                age = age + n
-                extP[age][o] = P[i][o] - (1 - ate)
-                ate = P[i][o] - (1 - ate)
+
+    # +++ no need because nxN
+    # for i, pref in enumerate(preferences_tmp):
+    #     ate = 0
+    #     age = i
+    #     for o in pref:
+    #         if ate + P[i][o] <= 1:
+    #             extP[age][o] = P[i][o]
+    #             ate += P[i][o]
+    #         else:
+    #             extP[age][o] = 1 - ate
+    #             age = age + n
+    #             extP[age][o] = P[i][o] - (1 - ate)
+    #             ate = P[i][o] - (1 - ate)
+
     # after got the matrix from PS, run bikroft
     # and change it to the original agent and object
     result = []
-    for item in bikroft(extP):
+    for item in bikroft( P):
         remove_dummy = np.delete(item[1], [], axis=1)
         stack_agents = np.array(
             np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
@@ -155,19 +158,34 @@ def print_mat(matrix, row, col):
         print(f"{row_name:10} | {row_str}")
 
 
+def compute_envy_for_me(me, mat, pref) -> int:
+    max_envy = 0
+    for other in range(len(mat)):
+        if me == other:
+            continue
+        my_sum = 0
+        is_sum = 0
+        for item in pref[me]:
+            my_sum += mat[me][item]
+            is_sum += mat[other][item]
+            if is_sum > my_sum and max_envy < is_sum - my_sum:
+                max_envy = is_sum - my_sum
+    return max_envy
+
+
 def whatEF(mat, pref) -> int:
-    max_envy =0
-    for me in range(len(mat)):
-        for other in range(len(mat)):
-            if me == other:
-                continue
-            my_sum = 0
-            is_sum = 0
-            for item in pref[me]:
-                my_sum += mat[me][item]
-                is_sum += mat[other][item]
-                if is_sum > my_sum and max_envy < is_sum-my_sum:
-                    max_envy = is_sum - my_sum
+    max_envy = 0
+    n = len(mat)
+
+    # Use ThreadPoolExecutor to parallelize computation
+    with ThreadPoolExecutor() as executor:
+        # Submit a job for each `me` index
+        futures = [executor.submit(compute_envy_for_me, me, mat, pref) for me in range(n)]
+
+        # Get results and find the maximum envy
+        for future in futures:
+            max_envy = max(max_envy, future.result())
+
     return max_envy
 
 
@@ -182,11 +200,15 @@ def generate_random_preferences(agents, items):
 
 if __name__ == "__main__":
     # compare_solution_methods()
-    test_per_sit = 10
+    # days_per_test = 3
 
-    nums = range(2,60)
-    iteration = 1
+    nums = range(2,10)
+    iteration = 10
+    maxenvys = []
     envys = []
+    minenvys = []
+    numtoenvys = []
+
     for i, num in enumerate(nums):
         print(num)
         envy_for_average = []
@@ -199,17 +221,15 @@ if __name__ == "__main__":
 
             originalPref = generate_random_preferences(agents=agent,items=item)
             alloction = np.zeros((len(agent), len(item)))
-            for _ in range(test_per_sit):
+            for _ in range(num):
                 if np.all(alloction == 1):
                     alloction = np.zeros((len(agent), len(item)))
                 # print(f"================================================\n                   day {day}              \n================================================")
 
                 #   given allocation and original pref give allocation
-                try:
-                    result = MPS_Lottery(
+
+                result = MPS_Lottery(
                         agents=agent, objects=item, preferences=originalPref, alloc=alloction)
-                except:
-                    break
 
                 user_input = random.randint(0, len(result[0]) - 1)
 
@@ -252,16 +272,21 @@ if __name__ == "__main__":
                 alloction += mat
 
                 day += 1
-            if max_envy< 0:
+            if max_envy < 0:
                 continue
             envy_for_average.append(max_envy)
+        maxenvys.append(max(envy_for_average))
         envys.append(np.average(envy_for_average))
+        minenvys.append(min(envy_for_average))
+        # numtoenvys.append(np.max(envy_for_average))
 
-    plt.plot(nums, envys, 'g-o')
+    plt.plot(nums, maxenvys, 'g-')
+    plt.plot(nums, envys, 'r-')
+    plt.plot(nums, minenvys, 'b-')
     plt.xlabel('number of agents and objects')
     plt.ylabel('max envy')
     plt.grid(True)
-    # plt.axhline(y=0, color='black', linestyle='--')  # Black dashed line at y=0
-    plt.legend()
-    plt.savefig("compere.png")  # after you plot the graphs, save them to a file and upload it separately.
+    plt.axhline(y=0, color='black', linestyle='--')  # Black dashed line at y=0
+    plt.savefig("compare.png")
+    # plt.legend(["This is my legend"], fontsize="x-large")
     plt.show()  # this should show the plot on your screen
