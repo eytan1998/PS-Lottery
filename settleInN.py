@@ -2,10 +2,12 @@ import copy
 import random
 from concurrent.futures import ThreadPoolExecutor
 
-# import PyQt6
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import linear_sum_assignment
+
+import withEnvy
+from testGraphs import find_cycle_and_adjust
 
 
 def bikroft(matrix: np.array) -> list:
@@ -56,7 +58,7 @@ def bikroft(matrix: np.array) -> list:
     return P
 
 
-def MPS_Lottery(agents, objects, preferences, alloc):
+def round_robin_envy(agents, objects, preferences, alloc, use_optimizer=False):
     """
     Algorithm that utilize the PS algorithm and Bikroft algorithm to make Simultaneously Achieving Ex-ante and
     Ex-post Fairness with no need for number of agents and object to be equal. and if using ehr EPS algorithm,
@@ -75,16 +77,12 @@ def MPS_Lottery(agents, objects, preferences, alloc):
     if n != m:
         raise ValueError("not NxN")
 
-    # 3) alloction
+    # 3) allocation
     alloc_tmp = copy.deepcopy(alloc)
-    # alloc_tmp = np.hstack((alloc_tmp, np.zeros((n, n))))
-    # 4) prefrence
-    preferences_tmp = copy.deepcopy(preferences)
-
-    P = np.zeros((n, n))
 
     # Iterate over each column
     for col in range(n):
+
         # Count the number of zeros in the column
         num_zeros = np.sum(alloc_tmp[:, col] == 0)
 
@@ -92,34 +90,214 @@ def MPS_Lottery(agents, objects, preferences, alloc):
         if num_zeros > 0:
             # Replace zeros with 1/(number of zeros in the column)
             alloc_tmp[:, col] = np.where(alloc_tmp[:, col] == 0, 1 / num_zeros, alloc_tmp[:, col])
-    P = alloc_tmp- alloc
+    P = alloc_tmp - alloc
+    if use_optimizer:
+        find_cycle_and_adjust(P, preferences)
     # split to presenters
-
-    # +++ no need because nxN
-    # for i, pref in enumerate(preferences_tmp):
-    #     ate = 0
-    #     age = i
-    #     for o in pref:
-    #         if ate + P[i][o] <= 1:
-    #             extP[age][o] = P[i][o]
-    #             ate += P[i][o]
-    #         else:
-    #             extP[age][o] = 1 - ate
-    #             age = age + n
-    #             extP[age][o] = P[i][o] - (1 - ate)
-    #             ate = P[i][o] - (1 - ate)
 
     # after got the matrix from PS, run bikroft
     # and change it to the original agent and object
     result = []
-    for item in bikroft( P):
+    for item in bikroft(P):
         remove_dummy = np.delete(item[1], [], axis=1)
         stack_agents = np.array(
             np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
         )
         result.append((item[0], stack_agents))
-    # if len(dummy) > 0:
-    #     P = P[:, :-len(dummy)]
+
+    return result, P
+
+
+def ps_on_left(agents, objects, preferences, alloc, use_optimizer=False):
+    """
+    Algorithm that utilize the PS algorithm and Bikroft algorithm to make Simultaneously Achieving Ex-ante and
+    Ex-post Fairness with no need for number of agents and object to be equal. and if using ehr EPS algorithm,
+    it will achieve that even with not strictly prefrence
+    :param agents: get number of agents
+    :param objects: get number of object
+    :param preferences: for each agent need order list corresponding to the most preferred objects (index) to the least,
+    it can have set of index if he preferred them the same
+    :param use_EPS: difficult false, if true run EPS, if false handel ties with lexicographically order.
+    :return: list of deterministic allocation matrix and scalar that represent the chance for this allocation
+    """
+    # assignment
+    n = len(agents)
+    # n = m
+    m = len(objects)
+    if n != m:
+        raise ValueError("not NxN")
+
+    # 3) allocation
+    alloc_tmp = copy.deepcopy(alloc)
+
+    num_agents = len(agents)
+    num_objects = len(objects)
+
+    P = np.zeros((num_agents, num_objects))
+    preferences_tmp = copy.deepcopy(preferences)
+    for agent in range(n):
+        what_i_ate = [item for item in preferences[agent] if alloc_tmp[agent][item] == 1]
+        preferences_tmp[agent] = [item for item in preferences_tmp[agent] if item not in what_i_ate]
+        if what_i_ate:
+            preferences_tmp[agent].extend(what_i_ate)
+
+    ate = [0 for _ in agents]
+    left_to_eat = [1 for _ in  objects]
+
+    threshhold = 1
+
+    while sum(left_to_eat) > 0:
+        who_can_eat = [agents[i] for i in range(len(agents)) if ate[i] < threshhold]
+        if who_can_eat == []:
+            break
+
+        # min of
+        # how much left from the wanted item to eat / how much wanting to eat him
+        # ???? the dist to next envy
+        what_i_want_eat = [
+            -1 if preferences_tmp[a] == [] else preferences_tmp[a][0] for a in agents
+        ]
+        until_end_of_item = [left_to_eat[o] /
+                             (1 if len([x for x in who_can_eat if what_i_want_eat[x] == o]) == 0
+                              else len([x for x in who_can_eat if what_i_want_eat[x] == o]))
+                             for o in objects if left_to_eat[o] > 0] + [np.inf]
+        how_much_to_eat = min([min(until_end_of_item)
+                                  , min(threshhold - ate[a] for a in who_can_eat)])
+
+        # update P
+        for a in who_can_eat:
+            P[a][what_i_want_eat[a]] += how_much_to_eat
+            alloc_tmp[a][what_i_want_eat[a]] += how_much_to_eat
+
+            # remove the eaten from who can eat, and the sum from the delay of who didnt eat
+        for a in who_can_eat:
+            ate[a] += how_much_to_eat
+
+        for a in who_can_eat:
+            left_to_eat[what_i_want_eat[a]] -= how_much_to_eat
+        # TODO np.round
+        left_to_eat = [np.round(a, 16) for a in left_to_eat]
+
+        # update the next to eat(tmp_prefrence)
+        for i in range(len(preferences_tmp)):
+            preferences_tmp[i] = [x for x in preferences_tmp[i] if left_to_eat[x] > 0]
+
+    # after got the matrix from PS, run bikroft
+    # and change it to the original agent and object
+    result = []
+    for item in bikroft(P):
+        remove_dummy = np.delete(item[1], [], axis=1)
+        stack_agents = np.array(
+            np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
+        )
+        result.append((item[0], stack_agents))
+
+    return result, P
+
+
+def round_robin(agents, objects, preferences, alloc):
+    """
+    Algorithm that utilize the PS algorithm and Bikroft algorithm to make Simultaneously Achieving Ex-ante and
+    Ex-post Fairness with no need for number of agents and object to be equal. and if using ehr EPS algorithm,
+    it will achieve that even with not strictly prefrence
+    :param agents: get number of agents
+    :param objects: get number of object
+    :param preferences: for each agent need order list corresponding to the most preferred objects (index) to the least,
+    it can have set of index if he preferred them the same
+    :param use_EPS: difficult false, if true run EPS, if false handel ties with lexicographically order.
+    :return: list of deterministic allocation matrix and scalar that represent the chance for this allocation
+    """
+    # assignment
+    n = len(agents)
+    # n = m
+    m = len(objects)
+    if n != m:
+        raise ValueError("not NxN")
+
+    # 3) allocation
+    alloc_tmp = copy.deepcopy(alloc)
+
+    # remove from preference what i already got
+    preferences_tmp = copy.deepcopy(preferences)
+    for agent in range(n):
+        what_i_ate = [item for item in preferences[agent] if alloc_tmp[agent][item] == 1]
+        preferences_tmp[agent] = [item for item in preferences_tmp[agent] if item not in what_i_ate]
+
+    P = np.zeros((n, n))
+
+    for agent in range(n):
+        what_i_want_to_eat = preferences_tmp[agent][0]
+        P[agent][what_i_want_to_eat] = 1
+        for p in preferences_tmp:
+            try:
+                p.remove(what_i_want_to_eat)
+            except:
+                continue
+
+    # Iterate over each agen (round robin)
+
+    # split to presenters
+
+    # after got the matrix from PS, run bikroft
+    # and change it to the original agent and object
+    result = []
+    for item in bikroft(P):
+        remove_dummy = np.delete(item[1], [], axis=1)
+        stack_agents = np.array(
+            np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
+        )
+        result.append((item[0], stack_agents))
+
+    return result, P
+
+
+def same_luck(agents, objects, preferences, alloc, use_optimizer=False):
+    """
+    Algorithm that utilize the PS algorithm and Bikroft algorithm to make Simultaneously Achieving Ex-ante and
+    Ex-post Fairness with no need for number of agents and object to be equal. and if using ehr EPS algorithm,
+    it will achieve that even with not strictly prefrence
+    :param agents: get number of agents
+    :param objects: get number of object
+    :param preferences: for each agent need order list corresponding to the most preferred objects (index) to the least,
+    it can have set of index if he preferred them the same
+    :param use_EPS: difficult false, if true run EPS, if false handel ties with lexicographically order.
+    :return: list of deterministic allocation matrix and scalar that represent the chance for this allocation
+    """
+    # assignment
+    n = len(agents)
+    # n = m
+    m = len(objects)
+    if n != m:
+        raise ValueError("not NxN")
+
+    # 3) allocation
+    alloc_tmp = copy.deepcopy(alloc)
+
+    # Iterate over each column
+    for col in range(n):
+
+        # Count the number of zeros in the column
+        num_zeros = np.sum(alloc_tmp[:, col] == 0)
+
+        # Avoid division by zero if there are no zeros in the column
+        if num_zeros > 0:
+            # Replace zeros with 1/(number of zeros in the column)
+            alloc_tmp[:, col] = np.where(alloc_tmp[:, col] == 0, 1 / num_zeros, alloc_tmp[:, col])
+    P = alloc_tmp - alloc
+    if use_optimizer:
+        find_cycle_and_adjust(P, preferences)
+    # split to presenters
+
+    # after got the matrix from PS, run bikroft
+    # and change it to the original agent and object
+    result = []
+    for item in bikroft(P):
+        remove_dummy = np.delete(item[1], [], axis=1)
+        stack_agents = np.array(
+            np.sum([remove_dummy[row::n] for row in range(n)], axis=1)
+        )
+        result.append((item[0], stack_agents))
+
     return result, P
 
 
@@ -198,91 +376,101 @@ def generate_random_preferences(agents, items):
     return preferences
 
 
-if __name__ == "__main__":
-    # compare_solution_methods()
-    # days_per_test = 3
+def sol_with_optimize(num, agent, item, original_pref):
+    max_envy = -1
+    allocation = np.zeros((len(agent), len(item)))
+    for _ in range(num // 2):
 
-    nums = range(2,10)
-    iteration = 10
-    maxenvys = []
-    envys = []
-    minenvys = []
-    numtoenvys = []
+        result = same_luck(
+            agents=agent, objects=item, preferences=original_pref, alloc=allocation, use_optimizer=True)
+        tmp_max_envy = max([whatEF(allocation + r[1], original_pref) for r in result[0]])
+        if tmp_max_envy > max_envy:
+            max_envy = tmp_max_envy
+
+        new_results = result[0]
+        user_input = random.randint(0, len(new_results) - 1)
+        mat = new_results[int(user_input)][1]
+        allocation += mat
+    return max_envy
+
+
+def sol_same_luck(num, agent, item, original_pref):
+    max_envy = -1
+    allocation = np.zeros((len(agent), len(item)))
+    for _ in range(num * 2):
+        result = ps_on_left(
+            agents=agent, objects=item, preferences=original_pref, alloc=allocation)
+        tmp_max_envy = max([whatEF(allocation + r[1], original_pref) for r in result[0]])
+        if tmp_max_envy > max_envy:
+            max_envy = tmp_max_envy
+
+        new_results = result[0]
+        user_input = random.randint(0, len(new_results) - 1)
+        mat = new_results[int(user_input)][1]
+        allocation += mat
+    return max_envy
+
+
+def sol_ps_on_left(num, agent, item, original_pref):
+    max_envy = -1
+    allocation = np.zeros((len(agent), len(item)))
+    for _ in range(num * 2):
+        try:
+            result = withEnvy.Envy_Lottery(
+                agents=agent, objects=item, preferences=original_pref, alloc=allocation)
+        except:
+            continue
+        tmp_max_envy = max([whatEF(allocation + r[1], original_pref) for r in result[0]])
+        if tmp_max_envy > max_envy:
+            max_envy = tmp_max_envy
+
+        new_results = result[0]
+        user_input = random.randint(0, len(new_results) - 1)
+        mat = new_results[int(user_input)][1]
+        allocation += mat
+    return max_envy
+
+
+def sol_round_robin(num, agent, item, original_pref):
+    max_envy = -1
+    allocation = np.zeros((len(agent), len(item)))
+    for _ in range(num*2):
+        result = round_robin(
+            agents=agent, objects=item, preferences=original_pref, alloc=allocation)
+        tmp_max_envy = max([whatEF(allocation + r[1], original_pref) for r in result[0]])
+        if tmp_max_envy > max_envy:
+            max_envy = tmp_max_envy
+
+        new_results = result[0]
+        user_input = random.randint(0, len(new_results) - 1)
+        mat = new_results[int(user_input)][1]
+        allocation += mat
+    return max_envy
+
+
+def compare_solution_methods():
+    nums = range(3, 15)
+    iteration = 1
+    envy_with = []
+    envy_without = []
 
     for i, num in enumerate(nums):
         print(num)
-        envy_for_average = []
+        envy_for_average_with = []
+        envy_for_average_without = []
+
+        agent = list(range(num))
+        item = list(range(num))
+        original_pref = generate_random_preferences(agents=agent, items=item)
+
         for _ in range(iteration):
-            max_envy = -1
-            day = 0
-            agent = list(range(num))
-            item = list(range(num))
+            # envy_for_average_with.append(sol_ps_on_left(num, agent, item, original_pref))
+            envy_for_average_without.append(sol_same_luck(num, agent, item, original_pref)/num)
+        # envy_with.append(max(envy_for_average_with))
+        envy_without.append(max(envy_for_average_without))
 
-
-            originalPref = generate_random_preferences(agents=agent,items=item)
-            alloction = np.zeros((len(agent), len(item)))
-            for _ in range(num):
-                if np.all(alloction == 1):
-                    alloction = np.zeros((len(agent), len(item)))
-                # print(f"================================================\n                   day {day}              \n================================================")
-
-                #   given allocation and original pref give allocation
-
-                result = MPS_Lottery(
-                        agents=agent, objects=item, preferences=originalPref, alloc=alloction)
-
-                user_input = random.randint(0, len(result[0]) - 1)
-
-                # print_PS_Lottery(
-                #     result=[(1, result[1])],
-                #     r=agent,
-                #     c=item,
-                #     prefe=originalPref,
-                #     alloc=alloction,
-                # )
-                # print(f'User input: {user_input}')
-
-                # print_PS_Lottery(
-                #     result=result[0], r=agent, c=item, prefe=originalPref, alloc=alloction
-                # )
-                tmpMaxEnvy = max([whatEF(alloction+ r[1],originalPref) for r in result[0]])
-                if tmpMaxEnvy > max_envy:
-                    max_envy = tmpMaxEnvy
-                 # minEnvy = min([whatEF(alloction+ r[1],originalPref) for r in result[0]])
-                # if minEnvy > 1:
-                #     raise ValueError(f'EF{minEnvy}')
-                # newResults = [r for r in result[0] if whatEF(alloction+r[1],originalPref) == minEnvy]
-                # maxProb = max([r[0] for r in newResults])
-                # newResults = [r for r in newResults if r[0] == maxProb]
-                newResults = result[0]
-                # print(
-                #     "What you like to do? \nq) quit the program \n0-inf) enter the number of the matrix you want to allocate(default)"
-                # )
-                user_input = random.randint(0, len(newResults)-1)
-                # print(f'User input: {user_input}')
-                # user_input = -1
-                # while user_input < 0 or user_input >= len(result[0]):
-                #     user_input = input()
-                #     if user_input == "q":
-                #         sys.exit()
-                #     user_input = int(user_input)
-                # update allocation
-                # get last 4 item
-                mat = newResults[int(user_input)][1]
-                alloction += mat
-
-                day += 1
-            if max_envy < 0:
-                continue
-            envy_for_average.append(max_envy)
-        maxenvys.append(max(envy_for_average))
-        envys.append(np.average(envy_for_average))
-        minenvys.append(min(envy_for_average))
-        # numtoenvys.append(np.max(envy_for_average))
-
-    plt.plot(nums, maxenvys, 'g-')
-    plt.plot(nums, envys, 'r-')
-    plt.plot(nums, minenvys, 'b-')
+    # plt.plot(nums, envy_with, 'g-*')
+    plt.plot(nums, envy_without, 'r-*')
     plt.xlabel('number of agents and objects')
     plt.ylabel('max envy')
     plt.grid(True)
@@ -290,3 +478,8 @@ if __name__ == "__main__":
     plt.savefig("compare.png")
     # plt.legend(["This is my legend"], fontsize="x-large")
     plt.show()  # this should show the plot on your screen
+
+
+if __name__ == "__main__":
+    compare_solution_methods()
+
