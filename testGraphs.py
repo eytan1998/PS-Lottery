@@ -4,6 +4,47 @@ from matplotlib import pyplot as plt
 
 
 
+def find_match(preferences, alloc):
+    """
+    Finds a perfect matching in a bipartite graph.
+
+    :param preferences: List of lists, where each sublist contains the preference order of nodes for each node in 
+                        one partition of the bipartite graph.
+    :param alloc: Initial allocations, represented as a matrix, of nodes between the two partitions.
+    :return: A list of matching pairs, or None if no perfect matching exists.
+    """
+    # Create a bipartite graph
+    B = nx.Graph()
+
+    # Assume len(preferences) is the number of nodes in one partition (agents),
+    # and len(alloc[0]) is the number of nodes in the other partition (items).
+    n = len(preferences)
+    agents = range(n)
+    items = range(n,n*2)
+
+    # Add nodes
+    B.add_nodes_from(agents, bipartite=0)
+    B.add_nodes_from(items, bipartite=1)
+
+    # Add edges according to preferences and current allocation
+    for agent in agents:
+        for item in preferences[agent]:
+            if alloc[agent][item] > 0:
+                B.add_edge(agent, item+n)
+
+
+    # Use NetworkX to find a matching
+    matching = nx.bipartite.maximum_matching(B, top_nodes=agents)
+
+    print(nx.is_perfect_matching(B,matching))
+    plot_graph_bipartite(B,n)
+    # Check if it's a perfect matching
+    if len(matching) // 2 == len(agents):
+        # Convert matching dictionary to list of pairs
+        return [(u, v) for u, v in matching.items() if u in agents]
+    else:
+        return None
+
 def find_cycle_and_adjust(matrix, preferences):
     # Create a directed graph
     graph = nx.DiGraph()
@@ -60,7 +101,23 @@ def adjust_matrix_if_cycle(matrix, graph, preferences):
 
     return
 
-def plot_graph(G):
+def plot_graph_bipartite(B,n):
+    agents = range(n)
+    items = range(n, n * 2)
+    # Create a layout for the bipartite graph
+    pos = {}
+    pos.update((node, (1, index)) for index, node in enumerate(agents))  # x-coord for agents
+    pos.update((node, (2, index - n)) for index, node in enumerate(items))  # x-coord for items
+
+    # Draw the bipartite graph
+    plt.figure(figsize=(8, 6))
+    nx.draw(B, pos, with_labels=True, node_size=700,
+            node_color=['lightblue' if data['bipartite'] == 0 else 'lightgreen' for node, data in B.nodes(data=True)],
+            edge_color='gray')
+    plt.title("Bipartite Graph with Agents and Items")
+    plt.show()
+
+def plot_graph_matrix(G):
     # Define positions for the nodes based on their (i, j) coordinates
     pos = {(i, j): (j, -i) for i, j in G.nodes()}  # x=j, y=-i to mimic a top-left matrix layout
 
@@ -83,9 +140,9 @@ def plot_graph(G):
     plt.show()
 
 if __name__ == '__main__':
-    mat = [[0.33333333 ,0.33333333 ,0.33333333], [0.33333333 ,0.33333333, 0.33333333], [0.33333333 ,0.33333333 ,0.33333333]]
+    mat = [[1,0,0],[0,1,0],[0,0,1]]
     pref = [[1, 0, 2], [1, 2, 0], [0, 2, 1]]
     # mat = [[0.25 ,0.25, 0.25, 0.25, 0.], [0.25, 0.25 ,0.25, 0.,   0.25], [0. ,  0.25, 0.25, 0.25, 0.25], [0.25, 0. ,  0.25, 0.25, 0.25],
     #  [0.25 ,0.25 ,0. ,  0.25 ,0.25]]
     # pref = [[1, 3, 4, 0, 2], [1, 0, 4, 2, 3], [3, 1, 4, 0, 2], [0, 2, 1, 4, 3], [3, 4, 0, 2, 1]]
-    find_cycle_and_adjust(mat, pref)
+    print(find_match(pref,mat))
