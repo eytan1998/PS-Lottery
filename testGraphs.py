@@ -140,9 +140,31 @@ def plot_graph_matrix(G):
     plt.show()
 
 if __name__ == '__main__':
-    mat = [[1,0,0],[0,1,0],[0,0,1]]
-    pref = [[1, 0, 2], [1, 2, 0], [0, 2, 1]]
-    # mat = [[0.25 ,0.25, 0.25, 0.25, 0.], [0.25, 0.25 ,0.25, 0.,   0.25], [0. ,  0.25, 0.25, 0.25, 0.25], [0.25, 0. ,  0.25, 0.25, 0.25],
-    #  [0.25 ,0.25 ,0. ,  0.25 ,0.25]]
-    # pref = [[1, 3, 4, 0, 2], [1, 0, 4, 2, 3], [3, 1, 4, 0, 2], [0, 2, 1, 4, 3], [3, 4, 0, 2, 1]]
-    print(find_match(pref,mat))
+    # mat = [[1,0,0],[0,1,0],[0,0,1]]
+    # pref = [[1, 0, 2], [1, 2, 0], [0, 2, 1]]
+    # # mat = [[0.25 ,0.25, 0.25, 0.25, 0.], [0.25, 0.25 ,0.25, 0.,   0.25], [0. ,  0.25, 0.25, 0.25, 0.25], [0.25, 0. ,  0.25, 0.25, 0.25],
+    # #  [0.25 ,0.25 ,0. ,  0.25 ,0.25]]
+    # # pref = [[1, 3, 4, 0, 2], [1, 0, 4, 2, 3], [3, 1, 4, 0, 2], [0, 2, 1, 4, 3], [3, 4, 0, 2, 1]]
+    # print(find_match(pref,mat))
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy.special import factorial
+
+
+    # Define the function
+    def f(x):
+        return (x - 1) * (factorial(x / 2) / factorial(x))
+
+
+    # Generate values for x
+    x_vals = np.linspace(1, 10, 400)
+    y_vals = f(x_vals)
+
+    # Plot the function
+    plt.plot(x_vals, y_vals, label=r'$(x - 1) \cdot \frac{(\frac{x}{2})!}{x!}$')
+    plt.xlabel('x')
+    plt.ylabel('f(x)')
+    plt.title(r'Plot of the function $(x - 1) \cdot \frac{(\frac{x}{2})!}{x!}$')
+    plt.legend()
+    plt.grid(True)
+    plt.show()

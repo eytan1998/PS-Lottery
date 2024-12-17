@@ -517,12 +517,12 @@ if __name__ == "__main__":
     # compare_solution_methods()
     day = 0
     num = 3
-    # agent = list(range(num))
-    # item = list(range(num))
-    # originalPref = generate_random_preferences(agents=agent, items=item)
-    agent = [0, 1, 2]
-    item = [0, 1, 2, 3]
-    originalPref = [[0, 1, 2, 3], [0, 2, 1, 3], [3, 1, 0, 2]]
+    agent = list(range(num))
+    item = list(range(num))
+    originalPref = generate_random_preferences(agents=agent, items=item)
+    # agent = [0, 1, 2]
+    # item = [0, 1, 2, 3]
+    # originalPref = [[0, 1, 2, 3], [0, 2, 1, 3], [3, 1, 0, 2]]
     alloction = [[] for _ in agent]
     while True:
         print(f'=======================================\n                   day {day}              \n===============================')
